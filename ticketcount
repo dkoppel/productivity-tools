@@ -1,0 +1,71 @@
+#!/usr/bin/env python2
+
+import hashlib
+import random
+import base64
+import urllib
+import hmac
+import argparse
+from lxml import etree
+
+# Globals
+apiurl = ""
+apikey = ""
+secretkey = ""
+
+def main():
+    arg = parseargs()
+    if arg.person:
+        people = getpeople()
+        try:
+            print getstaffcount(people.get(arg.person[0]))
+            #print printoutput(getstaffcount(people.get(arg.person[0])),arg.conky)
+        except:
+            print "Invalid User"
+    elif arg.department:
+        departments = getdepartments()
+        try:
+            print getdeptcount(departments.get(arg.department[0]))
+        except:
+            print "Invalid Department"
+    else:
+        print "You must supply -d/--department or -p/--person"
+def parseargs():
+    parser = argparse.ArgumentParser(description="Prints some useful ticket statistics from Kayako")
+    #parser.add_argument("-c", "--conky", action="store_true", help="Conkyrc (json) output")
+    parser.add_argument("-p", "--person", nargs=1, help="Ticket count for a specific staff member")
+    parser.add_argument("-d", "--department", nargs=1, help="Ticket count(s) for a specific department")
+    return parser.parse_args()
+
+def queryapi(controller):
+    salt = str(random.getrandbits(32))
+    signature = hmac.new(secretkey, msg=salt, digestmod=hashlib.sha256).digest()
+    encoded_signature = urllib.quote(base64.encodestring(signature).replace('\n', ''))
+    url = apiurl + "?e=" + controller + "&salt=" + salt + "&apikey=" + apikey + "&signature=" + encoded_signature
+    return urllib.urlopen(url).read()
+
+def getpeople():
+    xml = etree.fromstring(queryapi("/Base/Staff/"))
+    return dict(zip(xml.xpath("//username/text()"),xml.xpath("//id/text()")))
+
+def getstaffcount(personid):
+    xml = etree.fromstring(queryapi("/Tickets/TicketCount/"))
+    return xml.xpath("string(//owners/ownerstaff[@id="+personid+"]/@totalunresolveditems)") or "0"
+
+def getdepartments():
+    xml = etree.fromstring(queryapi("/Base/Department/"))
+    return dict(zip(xml.xpath("//title/text()"),xml.xpath("//id/text()")))
+
+def getdeptcount(departmentid):
+    xml = etree.fromstring(queryapi("/Tickets/TicketCount/"))
+    return xml.xpath("string(//department[@id="+departmentid+"]/ticketstatus[@id=1]/@totalitems)") or "0"
+
+def printoutput(output,option):
+    if option:
+        print "some json"
+    elif option:
+        print "some nice text"
+        
+
+if __name__ == "__main__":
+    main()
